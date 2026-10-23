@@ -394,11 +394,13 @@ def bea_members(d, label):
     u32 length, +0x20 u64 data offset, +0x28 u64 name offset (u16 length + the path)}. Every entry of the game's 7,665 is one zstd frame (kind 2, and 258 for the one sound project),
     even the two whose stored length equals their length, so the frame magic decides. → (path, data) of each entry"""
     n, arr = struct.unpack_from('<QQ', d, 0x20)
-    zstd = None
+    inline = d[arr:arr + 4] == b'ASST'   # file version 0x60000 (Super Mario Party Jamboree): the entries sit inline at +0x28, 0x48 bytes each (u32 size at +4),
+    zstd = None                          # u32 stored length / length at +0x14, u64 data offset at +0x38, u64 name offset at +0x40
     for i in range(n):
-        o = struct.unpack_from('<Q', d, arr + 8 * i)[0]
+        o = arr + struct.unpack_from('<I', d, arr + 4)[0] * i if inline else struct.unpack_from('<Q', d, arr + 8 * i)[0]
         if d[o:o + 4] != b'ASST': red(f'{label}: entry {i} @{o:#x} is not an ASST entry')
-        csz, usz, off, nm = struct.unpack_from('<II4xQQ', d, o + 0x14)
+        if inline: (csz, usz), (off, nm) = struct.unpack_from('<II', d, o + 0x14), struct.unpack_from('<QQ', d, o + 0x38)
+        else: csz, usz, off, nm = struct.unpack_from('<II4xQQ', d, o + 0x14)
         path = d[nm + 2:nm + 2 + struct.unpack_from('<H', d, nm)[0]].decode('utf-8', 'replace')
         data = d[off:off + csz]
         if data[:4] == ZSTD_MAGIC:
